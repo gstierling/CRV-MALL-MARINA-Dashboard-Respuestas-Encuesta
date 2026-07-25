@@ -25,10 +25,25 @@
   .refresh-badge{display:inline-flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,0.55);margin-top:10px;}
   .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.5s ease-in-out infinite;}
   #last-update{font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;}
-  #fecha-actual{font-size:26px;font-weight:700;color:#f97316;margin:14px 0;text-transform:capitalize;}
   #error-banner{display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#fca5a5;}
+
+  /* Selector de fechas */
+  .date-selector-wrap{margin:18px 0;}
+  .date-selector-label{font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;}
+  #date-select{
+    background:var(--surface2);border:1px solid var(--accent);border-radius:12px;
+    color:#fff;font-family:'Nunito',sans-serif;font-size:22px;font-weight:800;
+    padding:10px 20px;text-align:center;cursor:pointer;width:100%;
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2300d4aa' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 16px center;
+    color:#f97316;
+  }
+  #date-select option{background:var(--surface);color:#fff;font-size:16px;}
+  #date-select:focus{outline:none;box-shadow:0 0 0 2px rgba(0,212,170,0.3);}
+
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px 20px;margin-bottom:18px;}
-  .card-title{font-size:18px;font-weight:800;text-transform:uppercase;color:#fff;margin-bottom:18px;letter-spacing:0.4px;}
+  .card-title{font-size:16px;font-weight:800;text-transform:uppercase;color:#fff;margin-bottom:18px;letter-spacing:0.4px;line-height:1.4;}
   .donut-container{display:flex;flex-direction:column;align-items:center;gap:28px;}
   .donut-svg-wrap{width:100%;display:flex;justify-content:center;}
   .donut-legend{display:flex;flex-direction:column;gap:14px;align-items:flex-start;width:100%;padding:0 8px;}
@@ -61,7 +76,12 @@
   </header>
 
   <div id="error-banner"></div>
-  <div id="fecha-actual"></div>
+
+  <!-- SELECTOR DE FECHAS -->
+  <div class="date-selector-wrap">
+    <div class="date-selector-label">Seleccionar domingo</div>
+    <select id="date-select"><option value="">Cargando fechas...</option></select>
+  </div>
 
   <!-- COL G: SERVICIOS -->
   <div class="card">
@@ -117,9 +137,12 @@
 </div>
 
 <script>
-var CSV_URL = "https://docs.google.com/spreadsheets/d/1qV1LWn3fyfSOxRojvRJsWAwy4_QB-FXb6B_jT0YWaak/gviz/tq?tqx=out:csv&gid=802907203";
+var CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR5cCsPkOt7mqTYOC8f3c97spsJIqPe8NUCNMTptkRUDUm9WjKaqhWLUOs0NMXvd_ublmlO73cZF6FV/pub?gid=802907203&single=true&output=csv";
 var REFRESH_MS = 30000;
 var COLORS = ["#00d4aa","#f97316","#eab308","#a3e635","#a78bfa","#f43f5e","#e879f9","#38bdf8","#fb923c","#4ade80"];
+
+var allRows = [];
+var selectedDate = null; // "YYYY-MM-DD" string
 
 function parseSheetDate(s){
   if(!s) return null;
@@ -127,6 +150,21 @@ function parseSheetDate(s){
   var m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if(m) return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]),parseInt(m[4]||0),parseInt(m[5]||0),parseInt(m[6]||0));
   var d=new Date(s); return isNaN(d.getTime())?null:d;
+}
+
+function toDateKey(d){
+  // "YYYY-MM-DD"
+  var y=d.getFullYear(), mo=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return y+'-'+mo+'-'+day;
+}
+
+function formatDateLabel(key){
+  // key: "YYYY-MM-DD"
+  var parts=key.split('-');
+  var d=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+  var dias=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  var meses=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  return dias[d.getDay()]+' '+d.getDate()+' de '+meses[d.getMonth()]+' '+d.getFullYear();
 }
 
 function splitLine(line){
@@ -153,6 +191,99 @@ function parseCSV(text){
   return rows;
 }
 
+function getSundayDates(rows){
+  var seen={};
+  for(var i=0;i<rows.length;i++){
+    var d=parseSheetDate(rows[i][0]);
+    if(!d) continue;
+    if(d.getDay()!==0) continue;
+    var key=toDateKey(d);
+    seen[key]=true;
+  }
+  return Object.keys(seen).sort();
+}
+
+function getMonthKeys(rows){
+  // Returns sorted unique "YYYY-MM" keys for months with any record
+  var seen={};
+  for(var i=0;i<rows.length;i++){
+    var d=parseSheetDate(rows[i][0]);
+    if(!d) continue;
+    var key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    seen[key]=true;
+  }
+  return Object.keys(seen).sort();
+}
+
+function formatMonthLabel(key){
+  var parts=key.split('-');
+  var meses=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  return meses[parseInt(parts[1])-1]+' '+parts[0];
+}
+
+function populateDateSelector(rows){
+  var sel=document.getElementById('date-select');
+  var prev=sel.value;
+  sel.innerHTML='';
+
+  // --- TOTAL ---
+  var optTotal=document.createElement('option');
+  optTotal.value='ALL';
+  optTotal.textContent='Todos los registros';
+  sel.appendChild(optTotal);
+
+  // --- MESES (más reciente primero) ---
+  var months=getMonthKeys(rows).reverse();
+  var grpMonth=document.createElement('optgroup');
+  grpMonth.label='── Por mes ──';
+  sel.appendChild(grpMonth);
+  for(var i=0;i<months.length;i++){
+    var opt=document.createElement('option');
+    opt.value='MONTH:'+months[i];
+    opt.textContent=formatMonthLabel(months[i]);
+    grpMonth.appendChild(opt);
+  }
+
+  // --- DOMINGOS (más reciente primero) ---
+  var dates=getSundayDates(rows).reverse();
+  var grpDay=document.createElement('optgroup');
+  grpDay.label='── Por domingo ──';
+  sel.appendChild(grpDay);
+  for(var i=0;i<dates.length;i++){
+    var opt=document.createElement('option');
+    opt.value=dates[i];
+    opt.textContent=formatDateLabel(dates[i]);
+    grpDay.appendChild(opt);
+  }
+
+  // Restore or default to most recent sunday
+  if(prev && sel.querySelector('option[value="'+prev+'"]')){
+    sel.value=prev;
+  } else {
+    sel.value=dates.length>0 ? dates[0] : 'ALL';
+  }
+  selectedDate=sel.value;
+}
+
+function filterByDate(rows, key){
+  if(!key || key==='ALL') return rows;
+  if(key.indexOf('MONTH:')=== 0){
+    var month=key.replace('MONTH:',''); // "YYYY-MM"
+    return rows.filter(function(r){
+      var d=parseSheetDate(r[0]);
+      if(!d) return false;
+      var mk=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      return mk===month;
+    });
+  }
+  // specific sunday
+  return rows.filter(function(r){
+    var d=parseSheetDate(r[0]);
+    if(!d) return false;
+    return toDateKey(d)===key;
+  });
+}
+
 function countMap(rows,colIdx,multi){
   var map={};
   for(var i=0;i<rows.length;i++){
@@ -171,7 +302,7 @@ function sortedEntries(map){
   return Object.entries(map).sort(function(a,b){return b[1]-a[1];});
 }
 
-function drawDonut(svgId, legendId, entries, centerNum){
+function drawDonut(svgId,legendId,entries,centerNum){
   var svgEl=document.getElementById(svgId);
   var legEl=document.getElementById(legendId);
   if(!entries||entries.length===0){
@@ -219,11 +350,25 @@ function buildComments(rows){
   document.getElementById('timeline-comments').innerHTML=items.length?items.join(''):'<div class="no-data">Sin comentarios aún</div>';
 }
 
-function fechaHoy(){
-  var d=new Date();
-  var dias=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-  var meses=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-  return dias[d.getDay()]+' '+d.getDate()+' de '+meses[d.getMonth()]+' '+d.getFullYear();
+function renderDashboard(rows){
+  // Filter by selected date
+  var filtered = selectedDate ? filterByDate(rows, selectedDate) : rows;
+  var total = filtered.length;
+
+  drawDonut('donut-g','legend-g', sortedEntries(countMap(filtered,6,true)), total);
+  drawDonut('donut-h','legend-h', sortedEntries(countMap(filtered,7,false)));
+  drawDonut('donut-i','legend-i', sortedEntries(countMap(filtered,8,false)));
+  drawDonut('donut-j','legend-j', sortedEntries(countMap(filtered,9,false)));
+  buildComments(filtered);
+
+  var now=new Date();
+  document.getElementById('last-update').textContent='Actualizado '+now.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  var label='todos los registros';
+  if(selectedDate && selectedDate!=='ALL'){
+    if(selectedDate.indexOf('MONTH:')===0) label=formatMonthLabel(selectedDate.replace('MONTH:',''));
+    else label=formatDateLabel(selectedDate);
+  }
+  document.getElementById('footer-info').textContent=total+' registros — '+label;
 }
 
 async function fetchData(){
@@ -243,31 +388,26 @@ async function fetchData(){
   }
 }
 
-function renderDashboard(rows){
-  var total=rows.length;
-  document.getElementById('fecha-actual').textContent=fechaHoy();
-
-  drawDonut('donut-g','legend-g', sortedEntries(countMap(rows,6,true)), total);
-  drawDonut('donut-h','legend-h', sortedEntries(countMap(rows,7,false)));
-  drawDonut('donut-i','legend-i', sortedEntries(countMap(rows,8,false)));
-  drawDonut('donut-j','legend-j', sortedEntries(countMap(rows,9,false)));
-
-  buildComments(rows);
-
-  var now=new Date();
-  document.getElementById('last-update').textContent='Actualizado '+now.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  document.getElementById('footer-info').textContent=total+' registros — '+now.toLocaleDateString('es-CL');
-}
-
-document.getElementById('fecha-actual').textContent=fechaHoy();
-
 async function refresh(){
   var rows=await fetchData();
-  if(rows&&rows.length>0) renderDashboard(rows);
+  if(!rows||rows.length===0) return;
+  allRows=rows;
+
+  // Build/refresh date selector without losing current selection
+  populateDateSelector(rows);
+  selectedDate=document.getElementById('date-select').value||'ALL';
+
+  renderDashboard(allRows);
 }
 
+// Date selector change
+document.getElementById('date-select').addEventListener('change', function(){
+  selectedDate=this.value||null;
+  if(allRows.length>0) renderDashboard(allRows);
+});
+
 refresh();
-setInterval(refresh,REFRESH_MS);
+setInterval(refresh, REFRESH_MS);
 </script>
 </body>
 </html>
